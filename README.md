@@ -4,9 +4,9 @@ Queue Downloader (QD) is a simple script for scanning remote locations and multi
 
 ## How to
 
-1. Create a file with locations you want to download or search. (Please remember, all urls of downloaded directories must end with / (slash) character, otherwise won't work the --no-parent wget parameter and recursive search of that given location will not be performed.)
+1. Create a file with locations you want to download or search. *One Link - One Line*. (Please remember, all urls of downloaded directories must end with / (slash) character, otherwise won't work the --no-parent wget parameter and recursive search of that given location will not be performed.)
 
-2. Execute `qd` command with requested set of parameters.
+3. Execute `qd` command with requested set of parameters.
 
 Example 1):
 ```
