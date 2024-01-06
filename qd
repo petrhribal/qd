@@ -2,12 +2,13 @@
 
 # 
 INFO="\
-\rQueue Downloader (QD) is a simple script for scanning remote locations and multi-threaded sequential download of files.\
-It takes list of locations from given input file, resursively traverses directories and searches for files of given extensions.\n
-\r\rDependencies:
-\r\r wget (tested with 1.21.4)\n
-\r\r aria2 (tested with 1.37.0)\n
-\r\r axel (tested with 2.17.8)\n
+\rQueue Downloader (QD) is a simple script for scanning remote locations and multi-threaded sequential download of files. It takes list of locations from given input file, resursively traverses directories and searches for files of given extensions.\n
+\rDependencies:\n
+\r\t bash (tested with 5.2.21)\n
+\r\t wget (tested with 1.21.4)\n
+\r\t supported accelerators:\n
+\r\t\t aria2 (tested with 1.37.0)\n
+\r\t\t axel (tested with 2.17.8)\n
 \rVersion: 1.2\n
 \rAuthor: Petr Hribal <ph@petrhribal.eu>"
 #
@@ -120,9 +121,7 @@ while [ $# -gt 0 ]; do
 		echo "	A - ALL"
 		echo "	Example: [-e M,V,R] Download music, video and archives"
 		echo ""
-		echo "Please remember, all urls of downloaded directories \
-must end with \/ (backslash) character, otherwise won't work the --no-parent \
-wget parameter."
+		echo "Please remember, all urls of downloaded directories must end with / (slash) character, otherwise won't work the --no-parent wget parameter and recursive search of that given location will not be performed."
 		exit 0
 	;;
 	*)
