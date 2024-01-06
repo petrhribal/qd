@@ -1,0 +1,315 @@
+#!/bin/bash
+
+# 
+INFO="\
+\rQueue Downloader (QD) is a simple script for scanning remote locations and multi-threaded sequential download of files.\
+It takes list of locations from given input file, resursively traverses directories and searches for files of given extensions.\n
+\r\rDependencies:
+\r\r wget (tested with 1.21.4)\n
+\r\r aria2 (tested with 1.37.0)\n
+\r\r axel (tested with 2.17.8)\n
+\rVersion: 1.2\n
+\rAuthor: Petr Hribal <ph@petrhribal.eu>"
+#
+
+function urldecode() { : "${*//+/ }"; echo -e "${_//%/\\x}"; }
+
+urlfile="qd.link"
+speed="5M"
+connections="4"
+dir=`pwd`
+recursive="1"
+musicext="mp3,ogg,flac,wma,wav"
+videoext="wmv,avi,mpg,mpeg,mkv,mp4,srt,sub"
+imagesext="gif,jpeg,jpg,png,bmp,eps,svg"
+archivesext="rar,zip,tar,sfv"
+docsext="doc,docx,ppt,txt,xls,pdf,odp,odt"
+webext="html,js"
+extensions=""
+accel="aria2"
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	"-a"|"--accel")
+	    case "$2" in
+	    "aria2")
+		accel="aria2"
+	    ;;
+	    "axel")
+		accel="axel"
+	    ;;
+	    *)
+		echo "Selected invalid accelerator '$2'. Supported accelerators: aria2, axel"
+		exit 1
+	    ;;
+	    esac
+	;;	
+	"-d"|"--directory")
+		dir="$2"
+	;;
+	"-m"|"--maxspeed")
+		speed="$2"
+	;;
+	"-n"|"--num-connections")
+		connections="$2"
+	;;
+	"-nr"|"--not-recursive")
+		recursive="0"
+	;;
+	"-f"|"--urlfile")
+		urlfile="$2"
+	;;
+    	"-e"|"--extensions")
+		chosenext=(`echo $2 | sed 's/,/ /g'`)
+		for ext in "${chosenext[@]}"; do
+
+		    if [ ! -z "$extensions" ]; then
+			extensions=$extensions","
+		    fi
+
+		    case "$ext" in
+		    "M")
+			extensions=$extensions$musicext
+		    ;;
+		    "V")
+			extensions=$extensions$videoext
+		    ;;
+		    "I")
+			extensions=$extensions$imagesext
+		    ;;
+		    "R")
+			extensions=$extensions$archivesext
+		    ;;
+		    "D")
+			extensions=$extensions$docsext
+		    ;;
+		    "H")
+			extensions=$extensions$webext
+		    ;;
+		    "A")
+			extensions="ALL"
+		    ;;
+		    *)
+		    ;;
+		    esac
+		done
+    	;;
+	"-h"|"--help")
+		echo -e $INFO
+		echo ""
+		echo "-d,--directory <dir name>"
+		echo "	Directory where are downloaded files saved."
+		echo "-m,--maxspeed <speed>"
+		echo "	Maximal downloading speed."
+		echo "-n,--num-connections <number of connections>"
+		echo "	Number of connections."
+		echo "-f,--urlfile <url file name>"
+		echo "	File containing list of downloaded items."
+		echo "-nr,--not-recursive"
+		echo "	Recursively search given location"
+		echo "-h,--help"
+		echo "	Prints this help."
+		echo "-e,--extensions <extensions list>"
+		echo "	Download only files with specific extensions."
+		echo "	M - music files [$musicext]"
+		echo "	V - video files [$videoext]"
+		echo "	I - images [$imagesext]"
+		echo "	R - archives [$archivesext]"
+		echo "	D - docs [$docsext]"
+		echo "	H - web content [$webext]"
+		echo "	A - ALL"
+		echo "	Example: [-e M,V,R] Download music, video and archives"
+		echo ""
+		echo "Please remember, all urls of downloaded directories \
+must end with \/ (backslash) character, otherwise won't work the --no-parent \
+wget parameter."
+		exit 0
+	;;
+	*)
+	;;
+	esac	
+	# always shift	
+	shift
+done 
+
+if [ ! -f $urlfile ]; then
+	touch "$urlfile"
+fi
+
+qd_tmp_dir=`mktemp -d`
+
+crowler_output_file="${qd_tmp_dir}/crowler"
+if [ ! -f $crowler_output_file ]; then
+	touch "$crowler_output_file"
+fi
+
+crowler_log="${qd_tmp_dir}/crowler.log"
+if [ ! -f $crowler_log ]; then
+	touch "$crowler_log"
+fi
+
+crowler_err_log="${qd_tmp_dir}/crowler-err.log"
+if [ ! -f $crowler_err_log ]; then
+	touch "$crowler_err_log"
+fi
+
+targets_file="${qd_tmp_dir}/targets"
+if [ ! -f $targets_file ]; then
+	touch "$targets_file"
+fi
+
+targets_log="${qd_tmp_dir}/targets.log"
+if [ ! -f $targets_log ]; then
+	touch "$targets_log"
+fi
+
+targets_err_log="${qd_tmp_dir}/targets-err.log"
+if [ ! -f $targets_err_log ]; then
+	touch "$targets_err_log"
+fi
+
+bytes_speed=0
+if [[ $speed =~ ([0-9]+\.?[0-9]*)([^0-9]+) ]]; then
+  number=${BASH_REMATCH[1]}
+  unit=${BASH_REMATCH[2]}
+  if [ $unit == 'k' ] || [ $unit == 'K' ]; then
+    amplifier=1024
+  elif [ $unit == 'm' ] || [ $unit == 'M' ]; then
+    amplifier=$((1024 * 1024))
+  elif [ $unit == 'g' ] || [ $unit == 'G' ]; then
+    amplifier=$((1024 * 1024 * 1024))
+  else
+    amplifier=1
+  fi
+  bytes_speed=$(($number * $amplifier))
+fi
+
+echo '+-------------------//////////////////////+'
+echo '|          __OPTIONS__'
+echo '+-------------------//////////////////////+'
+echo "| Links file: $urlfile"
+echo "| Output dir: $dir"
+echo "| QD tmp dir: $qd_tmp_dir"
+echo "| Crowler output: $crowler_output_file"
+echo "| Discovered targets: $targets_file"
+echo "| Accepted file extensions: $extensions"
+echo "| Max speed: $speed"
+echo "| Num connections: $connections"
+echo "| Recursive: $recursive"
+echo '+-------------------//////////////////////+'
+echo '|          __LOGS__'
+echo '+-------------------//////////////////////+'
+echo "| Crowler log (success): $crowler_log"
+echo "| Crowler log (failed): $crowler_err_log"
+echo "| Targets log (success): $targets_log"
+echo "| Targets log (failed): $targets_err_log"
+echo '+-------------------//////////////////////+'
+echo "| Start..."
+echo "+---------------------/////////////////////+"	
+echo "| Searching the web"	
+
+wgetparams="-e robots=off --wait 1 -c --dns-timeout=5 --connect-timeout=5 --read-timeout=5"
+wgetparams="${wgetparams} --limit-rate=$bytes_speed"
+
+if [ ! "$extensions" == "ALL" ]; then
+#wgetparams="${wgetparams} --accept=\*.$extensions --ignore-case"
+wgetparams="${wgetparams} --accept=$extensions --ignore-case"
+fi
+
+wgetparams="${wgetparams} --no-parent"
+if [ $recursive -eq 1 ]; then
+wgetparams="${wgetparams} --recursive --spider"
+fi
+
+# this log level must not be changes, because the output file is parsed and
+# the results are used as the next step targets
+wgetparams="${wgetparams} --no-verbose --output-file=$crowler_output_file"
+
+echo "| params: $wgetparams"
+echo "| ..."
+
+CONTINUE="1"
+while [ $CONTINUE -eq 1 ]; do
+	url=`head -n 1 $urlfile`
+	if [ ! -z "$url" ]; then
+		wget ${wgetparams} "$url"
+		ret=$?	
+
+		# Create logs.
+	 	if [ $ret -eq 0 ]; then
+			echo "Searched $url"				
+			echo "$url" >> $crowler_log
+			grep -o '^.\+ URL:[ ]\+\([^ ]\+\) .\+$' $crowler_output_file | sed -e 's/^.\+ URL:[ ]*\([^ ]\+\) .\+$/\1/g' >> $targets_file
+				
+		else
+			echo "Search failed for $url"			
+			echo "$url" >> $crowler_err_log
+		fi
+	else
+		CONTINUE="0"
+	fi
+	# create tmp file containing all old lines except the first one
+	tail -n +2 $urlfile > ${urlfile}.tmp
+	mv ${urlfile}.tmp $urlfile
+done
+
+echo "+---------------------/////////////////////+"	
+echo "| Downloading detected files"
+
+if [[ $accel == "aria2" ]]; then
+	aria2params="--summary-interval=0 -x${connections} --max-download-limit=${bytes_speed}"
+	echo "| params: $aria2params"
+elif [[ $accel == "axel" ]]; then
+	axelparams="--alternate --no-clobber --insecure --num-connections=$connections --max-speed=$bytes_speed"
+	echo "| params: $axelparams"
+fi
+
+echo "| ..."
+
+CONTINUE="1"
+while [ $CONTINUE -eq 1 ]; do
+	url=`head -n 1 $targets_file`
+	if [ ! -z "$url" ]; then
+		if [[ $url == https:\/\/* ]]; then
+			output=${url#https:\/\/}
+		elif [[ $url == http:\/\/* ]]; then
+			output=${url#http:\/\/}
+		fi
+		output=$(urldecode "$output")
+		output_path=$(echo "$dir/$output")			
+		output_dir=$(dirname "$output_path")
+		output_base=$(basename "$output_path")
+		mkdir -p "$output_dir"
+
+		if [[ $accel == "aria2" ]]; then
+			aria2c $aria2params --dir="$output_dir" "$url"
+		elif [[ $accel == "axel" ]]; then
+			axel $axelparams --output="$output_dir" "$url"
+		fi
+		
+		ret=$?		
+			
+		# Create logs.	
+	 	if [ $ret -eq 0 ]; then
+			echo "Downloaded $url"
+			#mv "$output_base" "$output_path"
+			echo "$url" >> $targets_log
+			
+		    else
+			echo "Download failed for $url"
+			echo "$url" >> $targets_err_log
+				
+		    fi
+	else
+		CONTINUE="0"
+	fi
+	# create tmp file containing all old lines except the first one
+	tail -n +2 $targets_file > ${targets_file}.tmp
+	mv ${targets_file}.tmp $targets_file
+done
+
+echo "+---------------------/////////////////////+"
+echo "| ...Done"
+echo "+---------------------/////////////////////+"	
+exit 0
+
