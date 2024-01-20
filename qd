@@ -9,23 +9,49 @@ INFO="\
 \r\t supported accelerators:\n
 \r\t\t aria2 (tested with 1.37.0)\n
 \r\t\t axel (tested with 2.17.8)\n
-\rVersion: 1.2\n
+\rVersion: 1.3\n
 \rAuthor: Petr Hribal <ph@petrhribal.eu>"
+#
+# Release Notes
+# =============
+# 1.3
+# * If crowler or targets files are found in the directory, QD is able to continue from that state.
+# * Included options to define crowler and targets files.
+# * Crowler or targets files are by default searched in working directory. Storing them to tmp directory is possible via -uts modifier
+# * Included Books-Type extensions.
+# * Added more extensions to existing Types. 
 #
 
 function urldecode() { : "${*//+/ }"; echo -e "${_//%/\\x}"; }
 
-urlfile="qd.link"
+job_id=""
+work_dir=""
+url_file_suffix="links.stat"
+url_file=""
+use_tmp_stat="0"
+stat_dir=""
+crowler_stat_suffix="crowler.stat"
+crowler_stat=""
+crowler_log_suffix="crowler.log"
+crowler_log=""
+crowler_err_log_suffix="crowler-err.log"
+crowler_err_log=""
+targets_stat_suffix="targets.stat"
+targets_stat=""
+targets_log_suffix="targets.log"
+targets_log=""
+targets_err_log_suffix="targets-err.log"
+targets_err_log=""
 speed="5M"
 connections="4"
-dir=`pwd`
 recursive="1"
-musicext="mp3,ogg,flac,wma,wav"
-videoext="wmv,avi,mpg,mpeg,mkv,mp4,srt,sub"
-imagesext="gif,jpeg,jpg,png,bmp,eps,svg"
-archivesext="rar,zip,tar,sfv"
-docsext="doc,docx,ppt,txt,xls,pdf,odp,odt"
-webext="html,js"
+musicext="flac,mp3,ogg,wav,wma"
+videoext="avi,flv,mkv,mp4,mpeg,mpg,srt,sub,txt,wmv"
+imagesext="bmp,eps,gif,jpeg,jpg,png,svg"
+archivesext="7z,gz,rar,sfv,tar,zip"
+docsext="doc,docx,odp,odt,pdf,ppt,ps,rtf,txt,xls,xml"
+webext="css,htm,html,js"
+booksext="azw,azw3,cb7,cba,cbr,cbt,cbz,chm,css,djvu,doc,docx,epub,htm,html,js,mobi,pdb,pdf,prc,ps,rtf,txt,xml"
 extensions=""
 accel="aria2"
 
@@ -34,19 +60,107 @@ while [ $# -gt 0 ]; do
 	"-a"|"--accel")
 	    case "$2" in
 	    "aria2")
-		accel="aria2"
+			accel="aria2"
 	    ;;
 	    "axel")
-		accel="axel"
+			accel="axel"
 	    ;;
 	    *)
-		echo "Selected invalid accelerator '$2'. Supported accelerators: aria2, axel"
-		exit 1
+			echo "Selected invalid accelerator '$2'. Supported accelerators: aria2, axel"
+			exit 1
 	    ;;
 	    esac
-	;;	
+	;;
 	"-d"|"--directory")
-		dir="$2"
+		work_dir="$2"
+	;;
+	"-e"|"--extensions")
+		chosenext=(`echo $2 | sed 's/,/ /g'`)
+		for ext in "${chosenext[@]}"; do
+
+		    if [ ! -z "$extensions" ]; then
+				extensions=$extensions","
+		    fi
+
+		    case "$ext" in
+			"A")
+				extensions="ALL"
+		    ;;
+			"B")
+				extensions=$extensions$booksext
+		    ;;
+			"D")
+				extensions=$extensions$docsext
+		    ;;
+			"H")
+				extensions=$extensions$webext
+		    ;;
+			"I")
+				extensions=$extensions$imagesext
+		    ;;
+		    "M")
+				extensions=$extensions$musicext
+		    ;;
+		    "R")
+				extensions=$extensions$archivesext
+		    ;;
+		    "V")
+				extensions=$extensions$videoext
+		    ;;
+		    *)
+				echo "Selected invalid extension '$2'. Check supported extensions."
+				exit 1
+		    ;;
+		    esac
+		done
+    ;;
+	"-f"|"--url_file")
+		url_file="$2"
+	;;
+	"-h"|"--help")
+		echo -e $INFO
+		echo ""
+		echo "-a,--accel <accelerator name>"
+		echo "	Selected accelerator. Supported accelerators: aria2, axel"
+		echo "-d,--directory <dir name>"
+		echo "	Directory where is the url file expected and where will be files downloaded."
+		echo "-e,--extensions <extensions list>"
+		echo "	Download only files with specific extensions."
+		echo "		A - ALL"
+		echo "		B - books [$booksext]"
+		echo "		D - docs [$docsext]"
+		echo "		H - web content [$webext]"
+		echo "		I - images [$imagesext]"
+		echo "		M - music files [$musicext]"
+		echo "		R - archives [$archivesext]"
+		echo "		V - video files [$videoext]"
+		echo "	Example: [-e M,V,R] Download music, video and archives"
+		echo "-f,--url_file <url file name>"
+		echo "	File containing list of downloaded items."
+		echo "-h,--help"
+		echo "	Prints this help."
+		echo "-j,--jobid"
+		echo "	Job id. If defined, it will be used as a prefix for all stat files."
+		echo "-m,--maxspeed <speed>"
+		echo "	Maximal downloading speed."
+		echo "-n,--num-connections <number of connections>"
+		echo "	Number of connections."
+		echo "-nr,--not-recursive"
+		echo "	Do not recursively search given location"
+		echo "-s,--stat-directory <dir name>"
+		echo "	Directory where are saved stat files. If no value is defined, work dir will be used."
+		echo "-sc,--stat-crowler <file name>"
+		echo "	Name for the crowler stat file. If no value is defined, then it will be derived from job id."
+		echo "-st,--stat-targets <file name>"
+		echo "	Name for the targets stat file. If no value is defined, then it will be derived from job id."
+		echo "-uts,--use-tmp-stat"
+		echo "	Stat directory will be created as tmp directory."
+		echo ""
+		echo "Please remember, all urls of downloaded directories must end with / (slash) character, otherwise won't work the --no-parent wget parameter and recursive search of that given location will not be performed."
+		exit 0
+	;;
+	"-j"|"--jobid")
+		job_id="$2"
 	;;
 	"-m"|"--maxspeed")
 		speed="$2"
@@ -57,72 +171,17 @@ while [ $# -gt 0 ]; do
 	"-nr"|"--not-recursive")
 		recursive="0"
 	;;
-	"-f"|"--urlfile")
-		urlfile="$2"
+	"-s"|"--stat-directory")
+		stat_dir="$2"
 	;;
-    	"-e"|"--extensions")
-		chosenext=(`echo $2 | sed 's/,/ /g'`)
-		for ext in "${chosenext[@]}"; do
-
-		    if [ ! -z "$extensions" ]; then
-			extensions=$extensions","
-		    fi
-
-		    case "$ext" in
-		    "M")
-			extensions=$extensions$musicext
-		    ;;
-		    "V")
-			extensions=$extensions$videoext
-		    ;;
-		    "I")
-			extensions=$extensions$imagesext
-		    ;;
-		    "R")
-			extensions=$extensions$archivesext
-		    ;;
-		    "D")
-			extensions=$extensions$docsext
-		    ;;
-		    "H")
-			extensions=$extensions$webext
-		    ;;
-		    "A")
-			extensions="ALL"
-		    ;;
-		    *)
-		    ;;
-		    esac
-		done
-    	;;
-	"-h"|"--help")
-		echo -e $INFO
-		echo ""
-		echo "-d,--directory <dir name>"
-		echo "	Directory where are downloaded files saved."
-		echo "-m,--maxspeed <speed>"
-		echo "	Maximal downloading speed."
-		echo "-n,--num-connections <number of connections>"
-		echo "	Number of connections."
-		echo "-f,--urlfile <url file name>"
-		echo "	File containing list of downloaded items."
-		echo "-nr,--not-recursive"
-		echo "	Recursively search given location"
-		echo "-h,--help"
-		echo "	Prints this help."
-		echo "-e,--extensions <extensions list>"
-		echo "	Download only files with specific extensions."
-		echo "	M - music files [$musicext]"
-		echo "	V - video files [$videoext]"
-		echo "	I - images [$imagesext]"
-		echo "	R - archives [$archivesext]"
-		echo "	D - docs [$docsext]"
-		echo "	H - web content [$webext]"
-		echo "	A - ALL"
-		echo "	Example: [-e M,V,R] Download music, video and archives"
-		echo ""
-		echo "Please remember, all urls of downloaded directories must end with / (slash) character, otherwise won't work the --no-parent wget parameter and recursive search of that given location will not be performed."
-		exit 0
+	"-sc"|"--stat-crowler")
+		crowler_stat="$2"
+	;;	
+	"-st"|"--stat-targets")
+		targets_stat="$2"
+	;;
+	"-uts"|"--use-tmp-stat")
+		use_tmp_stat="1"
 	;;
 	*)
 	;;
@@ -131,42 +190,105 @@ while [ $# -gt 0 ]; do
 	shift
 done 
 
-if [ ! -f $urlfile ]; then
-	touch "$urlfile"
+# work directory
+if [ -z "$work_dir" ]; then
+	work_dir=`pwd`
 fi
 
-qd_tmp_dir=`mktemp -d`
-
-crowler_output_file="${qd_tmp_dir}/crowler"
-if [ ! -f $crowler_output_file ]; then
-	touch "$crowler_output_file"
+# url file
+if [ -z "$url_file" ]; then
+	if [ ! -z "$job_id" ]; then
+		url_file="${work_dir}/${job_id}-${url_file_suffix}"
+	else
+		url_file="${work_dir}/${url_file_suffix}"
+	fi
+fi
+if [ ! -f $url_file ]; then
+	touch "$url_file"
 fi
 
-crowler_log="${qd_tmp_dir}/crowler.log"
+# stat directory
+if [ -z "$stat_dir" ]; then
+	if [ $use_tmp_stat -eq 1 ]; then
+		stat_dir=`mktemp -d`
+	else
+		stat_dir="$work_dir"
+	fi
+fi
+
+# crowler stat
+if [ -z "$crowler_stat" ]; then
+	if [ ! -z "$job_id" ]; then
+		crowler_stat="${stat_dir}/${job_id}-${crowler_stat_suffix}"
+	else
+		crowler_stat="${stat_dir}/${crowler_stat_suffix}"
+	fi
+fi
+if [ ! -f $crowler_stat ]; then
+	touch "$crowler_stat"
+fi
+
+# crowler logs
+if [ -z "$crowler_log" ]; then
+	if [ ! -z "$job_id" ]; then
+		crowler_log="${stat_dir}/${job_id}-${crowler_log_suffix}"
+	else
+		crowler_log="${stat_dir}/${crowler_log_suffix}"
+	fi
+fi
 if [ ! -f $crowler_log ]; then
 	touch "$crowler_log"
 fi
 
-crowler_err_log="${qd_tmp_dir}/crowler-err.log"
+# crowler error logs
+if [ -z "$crowler_err_log" ]; then
+	if [ ! -z "$job_id" ]; then
+		crowler_err_log="${stat_dir}/${job_id}-${crowler_err_log_suffix}"
+	else
+		crowler_err_log="${stat_dir}/${crowler_err_log_suffix}"
+	fi
+fi
 if [ ! -f $crowler_err_log ]; then
 	touch "$crowler_err_log"
 fi
 
-targets_file="${qd_tmp_dir}/targets"
-if [ ! -f $targets_file ]; then
-	touch "$targets_file"
+# targets stat
+if [ -z "$targets_stat" ]; then
+	if [ ! -z "$job_id" ]; then
+		targets_stat="${stat_dir}/${job_id}-${targets_stat_suffix}"
+	else
+		targets_stat="${stat_dir}/${targets_stat_suffix}"
+	fi
+fi
+if [ ! -f $targets_stat ]; then
+	touch "$targets_stat"
 fi
 
-targets_log="${qd_tmp_dir}/targets.log"
+# targets logs
+if [ -z "$targets_log" ]; then
+	if [ ! -z "$job_id" ]; then
+		targets_log="${stat_dir}/${job_id}-${targets_log_suffix}"
+	else
+		targets_log="${stat_dir}/${targets_log_suffix}"
+	fi
+fi
 if [ ! -f $targets_log ]; then
 	touch "$targets_log"
 fi
 
-targets_err_log="${qd_tmp_dir}/targets-err.log"
+# targets error logs
+if [ -z "$targets_err_log" ]; then
+	if [ ! -z "$job_id" ]; then
+		targets_err_log="${stat_dir}/${job_id}-${targets_err_log_suffix}"
+	else
+		targets_err_log="${stat_dir}/${targets_err_log_suffix}"
+	fi
+fi
 if [ ! -f $targets_err_log ]; then
 	touch "$targets_err_log"
 fi
 
+# calculate speed in bytes
 bytes_speed=0
 if [[ $speed =~ ([0-9]+\.?[0-9]*)([^0-9]+) ]]; then
   number=${BASH_REMATCH[1]}
@@ -186,15 +308,17 @@ fi
 echo '+-------------------//////////////////////+'
 echo '|          __OPTIONS__'
 echo '+-------------------//////////////////////+'
-echo "| Links file: $urlfile"
-echo "| Output dir: $dir"
-echo "| QD tmp dir: $qd_tmp_dir"
-echo "| Crowler output: $crowler_output_file"
-echo "| Discovered targets: $targets_file"
-echo "| Accepted file extensions: $extensions"
+echo "| Job id: $job_id"
+echo "| Working dir: $work_dir"
+echo "| Links file: $url_file"
+echo "| Use tmp stat dir: $use_tmp_stat"
+echo "| Stat dir: $stat_dir"
+echo "| Crowler stat file: $crowler_stat"
+echo "| Targets stat file: $targets_stat"
 echo "| Max speed: $speed"
 echo "| Num connections: $connections"
 echo "| Recursive: $recursive"
+echo "| Accepted file extensions: $extensions"
 echo '+-------------------//////////////////////+'
 echo '|          __LOGS__'
 echo '+-------------------//////////////////////+'
@@ -207,29 +331,29 @@ echo "| Start..."
 echo "+---------------------/////////////////////+"	
 echo "| Searching the web"	
 
-wgetparams="-e robots=off --wait 1 -c --dns-timeout=5 --connect-timeout=5 --read-timeout=5"
+wgetparams="-e robots=off --waitretry=4 -c --dns-timeout=5 --connect-timeout=5 --read-timeout=5"
 wgetparams="${wgetparams} --limit-rate=$bytes_speed"
 
 if [ ! "$extensions" == "ALL" ]; then
-#wgetparams="${wgetparams} --accept=\*.$extensions --ignore-case"
-wgetparams="${wgetparams} --accept=$extensions --ignore-case"
+	#wgetparams="${wgetparams} --accept=\*.$extensions --ignore-case"
+	wgetparams="${wgetparams} --accept=$extensions --ignore-case"
 fi
 
 wgetparams="${wgetparams} --no-parent"
 if [ $recursive -eq 1 ]; then
-wgetparams="${wgetparams} --recursive --spider"
+	wgetparams="${wgetparams} --recursive --spider"
 fi
 
 # this log level must not be changes, because the output file is parsed and
 # the results are used as the next step targets
-wgetparams="${wgetparams} --no-verbose --output-file=$crowler_output_file"
+wgetparams="${wgetparams} --no-verbose --output-file=$crowler_stat"
 
 echo "| params: $wgetparams"
 echo "| ..."
 
 CONTINUE="1"
 while [ $CONTINUE -eq 1 ]; do
-	url=`head -n 1 $urlfile`
+	url=`head -n 1 $url_file`
 	if [ ! -z "$url" ]; then
 		wget ${wgetparams} "$url"
 		ret=$?	
@@ -238,8 +362,6 @@ while [ $CONTINUE -eq 1 ]; do
 	 	if [ $ret -eq 0 ]; then
 			echo "Searched $url"				
 			echo "$url" >> $crowler_log
-			grep -o '^.\+ URL:[ ]\+\([^ ]\+\) .\+$' $crowler_output_file | sed -e 's/^.\+ URL:[ ]*\([^ ]\+\) .\+$/\1/g' >> $targets_file
-				
 		else
 			echo "Search failed for $url"			
 			echo "$url" >> $crowler_err_log
@@ -247,9 +369,14 @@ while [ $CONTINUE -eq 1 ]; do
 	else
 		CONTINUE="0"
 	fi
+
+	if [ -f $crowler_stat ]; then
+		grep -o '^.\+ URL:[ ]\+\([^ ]\+\) .\+$' $crowler_stat | sed -e 's/^.\+ URL:[ ]*\([^ ]\+\) .\+$/\1/g' >> $targets_stat
+	fi
+
 	# create tmp file containing all old lines except the first one
-	tail -n +2 $urlfile > ${urlfile}.tmp
-	mv ${urlfile}.tmp $urlfile
+	tail -n +2 $url_file > ${url_file}.tmp
+	mv ${url_file}.tmp $url_file
 done
 
 echo "+---------------------/////////////////////+"	
@@ -267,7 +394,7 @@ echo "| ..."
 
 CONTINUE="1"
 while [ $CONTINUE -eq 1 ]; do
-	url=`head -n 1 $targets_file`
+	url=`head -n 1 $targets_stat`
 	if [ ! -z "$url" ]; then
 		if [[ $url == https:\/\/* ]]; then
 			output=${url#https:\/\/}
@@ -275,7 +402,7 @@ while [ $CONTINUE -eq 1 ]; do
 			output=${url#http:\/\/}
 		fi
 		output=$(urldecode "$output")
-		output_path=$(echo "$dir/$output")			
+		output_path=$(echo "$work_dir/$output")			
 		output_dir=$(dirname "$output_path")
 		output_base=$(basename "$output_path")
 		mkdir -p "$output_dir"
@@ -293,22 +420,19 @@ while [ $CONTINUE -eq 1 ]; do
 			echo "Downloaded $url"
 			#mv "$output_base" "$output_path"
 			echo "$url" >> $targets_log
-			
-		    else
+		else
 			echo "Download failed for $url"
-			echo "$url" >> $targets_err_log
-				
-		    fi
+			echo "$url" >> $targets_err_log		
+		fi
 	else
 		CONTINUE="0"
 	fi
 	# create tmp file containing all old lines except the first one
-	tail -n +2 $targets_file > ${targets_file}.tmp
-	mv ${targets_file}.tmp $targets_file
+	tail -n +2 $targets_stat > ${targets_stat}.tmp
+	mv ${targets_stat}.tmp $targets_stat
 done
 
 echo "+---------------------/////////////////////+"
 echo "| ...Done"
 echo "+---------------------/////////////////////+"	
 exit 0
-
